@@ -1,0 +1,72 @@
+----- get mails for today------- tigger for this function getEmailsForToday
+
+
+
+function getEmailsForToday() {
+  var labelColors = {
+    "Spindle Alerts": "#ffcccc", // Light red
+    "LogMeIn Alert": "#ccffcc", // Light green
+    "SL 2022 Production Server": "#ccccff", // Light blue
+    "SL Beta SQL 2022": "#ffccff"  // Light purple
+  };
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet();
+  var today = new Date();
+  var todayFormatted = Utilities.formatDate(today, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  var labelSheet = sheet.getSheetByName(todayFormatted);
+
+  if (!labelSheet) {
+    labelSheet = sheet.insertSheet(todayFormatted);
+    labelSheet.appendRow(["Date", "Time", "Label", "Subject", "Informed To", "Status", "Reply Mail Sent"]);
+  }
+
+  for (var labelName in labelColors) {
+    var label = GmailApp.getUserLabelByName(labelName);
+    if (!label) {
+      continue; // Skip to the next label if the current one doesn't exist
+    }
+    var threads = label.getThreads();
+
+    threads.forEach(function(thread) {
+      var messages = thread.getMessages();
+      messages.forEach(function(message) {
+        var messageDate = Utilities.formatDate(message.getDate(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+        if (messageDate.startsWith(todayFormatted)) {
+          var messageId = message.getId();
+          // Check if the message has already been processed to avoid duplicates
+          if (!isMessageAlreadyProcessed(messageId)) {
+            var receivedTime = Utilities.formatDate(message.getDate(), Session.getScriptTimeZone(), "HH:mm:ss");
+            var subject = message.getSubject();
+            var labelColor = labelColors[labelName];
+            var startRow = labelSheet.getLastRow() + 1; // Get the current last row
+            var newRow = [messageDate, receivedTime, labelName, subject, "", "", ""];
+            labelSheet.appendRow(newRow);
+            markMessageAsProcessed(messageId);
+            // Apply background color to the entire row
+            var newRange = labelSheet.getRange(startRow, 1, 1, 7);
+            newRange.setBackground(labelColor);
+            labelSheet.autoResizeColumns(1, 7); // Auto-fit columns 1 to 7
+          }
+        }
+      });
+    });
+  }
+}
+
+function isMessageAlreadyProcessed(messageId) {
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var processedMessages = scriptProperties.getProperty('processedMessages');
+  if (!processedMessages) {
+    return false;
+  }
+  processedMessages = JSON.parse(processedMessages);
+  return processedMessages.hasOwnProperty(messageId);
+}
+
+function markMessageAsProcessed(messageId) {
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var processedMessages = scriptProperties.getProperty('processedMessages');
+  processedMessages = processedMessages ? JSON.parse(processedMessages) : {};
+  processedMessages[messageId] = true;
+  scriptProperties.setProperty('processedMessages', JSON.stringify(processedMessages));
+}
